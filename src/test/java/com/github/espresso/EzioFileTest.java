@@ -8,10 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class EzioFileTest {
 
+    public String path(String path){
+        return "src/test/java/com/github/espresso/test-cases/" + path;
+    }
+
     // Test Case 1: Verifies writing fresh content works
     @Test
     public void testFileWriting() throws IOException {
-        String path = "test_write.txt";
+        String path =  path("test_write.txt");
         FILE.Write writer = new FILE.Write(path);
 
         writer.write("Hello Espresso");
@@ -25,7 +29,7 @@ public class EzioFileTest {
     // Test Case 2: Verifies that writeString completely overwrites old text
     @Test
     public void testFileOverwrite() throws IOException {
-        String path = "test_overwrite.txt";
+        String path =  path("test_overwrite.txt");
         FILE.Write writer = new FILE.Write(path);
 
         writer.write("Old Data");
@@ -41,7 +45,7 @@ public class EzioFileTest {
     // Test Case 3: Verifies appending text onto an existing file
     @Test
     public void testFileAppending() throws IOException {
-        String path = "test_append.txt";
+        String path =  path("test_append.txt");
 
         // Start with an initial line
         FILE.Write writer = new FILE.Write(path);
@@ -62,7 +66,7 @@ public class EzioFileTest {
     // Test Case 4: Verifies writing an empty string creates a blank line
     @Test
     public void testEmptyFile() throws IOException {
-        String path = "test_empty.txt";
+        String path =  path("test_empty.txt");
         FILE.Write writer = new FILE.Write(path);
 
         writer.write(""); // Writes just a newline separator
