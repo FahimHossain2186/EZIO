@@ -28,6 +28,7 @@ Beginner-friendly.
 * [Who Is FileX For?](#who-is-filex-for)
 * [Our Philosophy](#our-philosophy)
 * [Requirements](#requirements)
+* [Two Ways to Create a File Handle](#two-ways-to-create-a-file-handle)
 * [Features](#features)
   * [Reading](#reading)
   * [Writing](#writing)
@@ -139,6 +140,37 @@ Even before typing it, you can imagine what the code does.
 FileX uses `var` (local variable type inference, Java 10+) and `String.isBlank()`
 (Java 11+) internally. Make sure your project's JDK is set to 11 or above,
 or you'll hit compile errors that have nothing to do with FileX itself.
+
+---
+
+## Two Ways to Create a File Handle
+
+`Read`, `Write`, and `Append` can each be created two ways — pick whichever
+feels more natural to you. Both produce the exact same object, run through
+the exact same path/charset validation, and behave identically afterward.
+
+**Constructor** — the classic `new ClassName(...)` pattern you already know
+from `Scanner`, `ArrayList`, and `Random`:
+
+```java
+var reader = new FileX.Read("notes.txt");
+var reader = new FileX.Read("notes.txt", StandardCharsets.UTF_8);
+```
+```java
+FileX.Read reader = new FileX.Read("notes.txt");
+FileX.Read reader = new FileX.Read("notes.txt", StandardCharsets.UTF_8);
+```
+
+**Factory method** — reads like a sentence, matches the rest of the FileX API:
+
+```java
+var reader = FileX.read("notes.txt");
+var reader = FileX.read("notes.txt", StandardCharsets.UTF_8);
+```
+
+The same applies to `FileX.write(...)` / `new FileX.Write(...)` and
+`FileX.append(...)` / `new FileX.Append(...)`. Use whichever you find
+easier to read — neither is "more correct."
 
 ---
 
@@ -255,6 +287,9 @@ var reader = FileX.read("notes.txt", StandardCharsets.ISO_8859_1);
 var writer = FileX.write("notes.txt", StandardCharsets.UTF_16);
 var appender = FileX.append("notes.txt", StandardCharsets.US_ASCII);
 ```
+
+> Constructor style takes a charset the same way —
+> see [Two Ways to Create a File Handle](#two-ways-to-create-a-file-handle).
 
 ---
 

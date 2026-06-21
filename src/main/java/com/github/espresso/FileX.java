@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.FileTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -92,6 +93,18 @@ public class FileX {
     }
 
     /**
+     * Creates parent directories if necessary
+     * and then creates the file.
+     */
+    public static void createWithDirectories(
+            String filePath)
+            throws IOException {
+
+        createParentDirectories(filePath);
+        create(filePath);
+    }
+
+    /**
      * Deletes a file.
      *
      * @param filePath path of the file to delete
@@ -160,14 +173,22 @@ public class FileX {
 
         private int currentLine = 0;
         private List<String> cachedLines;
+        private FileTime lastKnownModifiedTime;
 
-        private Read(String filePath,  Charset charset) {
+        public Read(String filePath,  Charset charset) {
             super(filePath,  charset);
         }
+        public Read(String filePath) { this(filePath, DEFAULT_CHARSET); }       //Creates a reader using the default charset (UTF-8)
 
         /** Loads lines from disk on first call, returns the cached copy afterward. */
         private List<String> lines() throws IOException {
-            if (cachedLines == null) cachedLines = Files.readAllLines(getPath(), charset);
+            FileTime currentModified = Files.getLastModifiedTime(getPath());
+
+            if (cachedLines == null || !currentModified.equals(lastKnownModifiedTime)) {
+                    cachedLines =Files.readAllLines(getPath(), charset);
+                    lastKnownModifiedTime = currentModified;
+            }
+
             return cachedLines;
         }
 
@@ -228,10 +249,22 @@ public class FileX {
             return lines.get(currentLine++);
         }
 
-        /** Force re-read from disk (e.g. file changed externally). */
-        public void refresh() {
+
+        /**
+         * Reloads the file from disk and resets the reader.
+         *
+         * FileX readers cache the contents they first read.
+         * If the file changes after this reader was created
+         * (for example through Write, Append, or an external program),
+         * call refresh() to see the latest contents.
+         *
+         * @return this reader instance
+         */
+        public Read refresh() {
             cachedLines = null;
+            lastKnownModifiedTime = null;
             currentLine = 0;
+            return this;
         }
     }
 
@@ -246,9 +279,10 @@ public class FileX {
 
     public static class Append extends BaseFile {
 
-        private Append(String filePath,  Charset charset) {
+        public Append(String filePath,  Charset charset) {
             super(filePath,  charset);
         }
+        public Append(String filePath) { this(filePath, DEFAULT_CHARSET); }         //Creates an appender using the default charset (UTF-8).
 
         /** Appends a single line to the end of the file. */
         public void append(String line) throws IOException {
@@ -277,9 +311,10 @@ public class FileX {
 
     public static class Write extends BaseFile {
 
-        private Write(String filePath,  Charset charset) {
+        public Write(String filePath,  Charset charset) {
             super(filePath, charset);
         }
+        public Write(String filePath) { this(filePath, DEFAULT_CHARSET); }          //Creates a writer using the default charset (UTF-8).
 
         /** Overwrites the file with a single line. */
         public void write(String line)throws IOException {
@@ -297,3 +332,5 @@ public class FileX {
         }
     }
 }
+
+
