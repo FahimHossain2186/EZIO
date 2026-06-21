@@ -10,26 +10,40 @@ import java.util.NoSuchElementException;
 
 public class FileX {
 
-    private static final Charset CHARSET = StandardCharsets.UTF_8;
+    private static final Charset DEFAULT_CHARSET = StandardCharsets.UTF_8;
 
-    /**This allows user to create an object using var
-     *
-     * Example:
-     * var reader = FileX.read("notes.txt");
-     * var writer = FileX.write("notes.txt");
-     * var appender = FileX.append("notes.txt");
-     */
+    // ===========================================================
+    //  Factory methods — entry points into the library
+    // ===========================================================
 
+    /** Creates a reader for the file at {@code path}, using UTF-8. */
     public static Read read(String path) {
-        return new Read(path);
+        return new Read(path, DEFAULT_CHARSET);
     }
 
+    /** Creates a reader for the file at {@code path}, using a custom charset. */
+    public static Read read(String path, Charset charset) {
+        return new Read(path, charset);
+    }
+
+    /** Creates a writer (overwrite mode) for the file at {@code path}, using UTF-8. */
     public static Write write(String path) {
-        return new Write(path);
+        return new Write(path, DEFAULT_CHARSET);
     }
 
+    /** Creates a writer (overwrite mode) for the file at {@code path}, using a custom charset. */
+    public static Write write(String path, Charset charset) {
+        return new Write(path, charset);
+    }
+
+    /** Creates an appender for the file at {@code path}, using UTF-8. */
     public static Append append(String path) {
-        return new Append(path);
+        return new Append(path, DEFAULT_CHARSET);
+    }
+
+    /** Creates an appender for the file at {@code path}, using a custom charset. */
+    public static Append append(String path, Charset charset) {
+        return new Append(path, charset);
     }
 
     /* =======================
@@ -47,28 +61,31 @@ public class FileX {
     }
 
     /**
-     * Creates a new empty file.
+     * Creates a new, empty file.
      *
-     * Parent directories must already exist.
+     * <p>The parent directory must already exist — use
+     * {@link #createParentDirectories(String)} first if it might not.
      *
      * @param filePath path of the file to create
-     * @throws FileAlreadyExistsException if the file already exists
+     * @throws FileAlreadyExistsException if a file already exists at that path
+     * @throws IOException if the file could not be created for another reason
      */
     public static void create(String filePath) throws IOException {
         Files.createFile(Paths.get(filePath));
     }
 
     /**
-     * Creates parent directories if they do not exist.
+     * Creates any missing parent directories for the given path.
      *
-     * Example:
-     * docs/projects/notes.txt
-     * -> creates docs/projects
+     * <p>Example: for {@code "docs/projects/notes.txt"}, this creates the
+     * {@code docs/projects} directory tree if it doesn't already exist.
+     * Does nothing if the parent directories already exist.
+     *
+     * @param filePath path whose parent directories should be created
+     * @throws IOException if the directories could not be created
      */
     public static void createParentDirectories(String filePath) throws IOException {
-
         Path parent = Paths.get(filePath).getParent();
-
         if (parent != null) {
             Files.createDirectories(parent);
         }
@@ -81,14 +98,9 @@ public class FileX {
      * @throws IOException if the file does not exist
      */
     public static void delete(String filePath) throws IOException {
-
-        boolean deleted =
-                Files.deleteIfExists(Paths.get(filePath));
-
+        boolean deleted = Files.deleteIfExists(Paths.get(filePath));
         if (!deleted) {
-            throw new IOException(
-                    "File does not exist: " + filePath
-            );
+            throw new IOException("File does not exist: " + filePath);
         }
     }
 
@@ -96,12 +108,19 @@ public class FileX {
        Base File
        ======================= */
 
+    /**
+     * Common base for all file handles. Holds the target path and charset,
+     * and validates them once at construction so subclasses never have to.
+     */
+
     private static abstract class BaseFile {
 
         protected final String filePath;
+        protected final Charset charset;
 
-        protected BaseFile(String filePath) {
+        protected BaseFile(String filePath, Charset charset) {
             this.filePath = requireValidPath(filePath);
+            this.charset = requireValidCharset(charset);
         }
 
         protected Path getPath() {
@@ -113,30 +132,48 @@ public class FileX {
                 throw new IllegalArgumentException("File path must not be null or empty.");
             return filePath;
         }
+
+        private static Charset requireValidCharset(Charset charset) {
+            if (charset == null) {
+                throw new IllegalArgumentException("Charset must not be null.");
+            }
+            return charset;
+        }
     }
 
     /* =======================
        Read
        ======================= */
 
+    /**
+     * Reads lines from a file, either all at once or one at a time.
+     *
+     * <p>Lines are loaded from disk on first access and cached in memory
+     * for subsequent calls, so repeated reads don't re-hit the filesystem.
+     * Call {@link #refresh()} to discard the cache and re-read from disk
+     * (e.g. if the file changed externally).
+     *
+     * <p>Not thread-safe — see class-level note on {@link FileX}.
+     */
+
     public static class Read extends BaseFile {
 
         private int currentLine = 0;
         private List<String> cachedLines;
 
-        public Read(String filePath) {
-            super(filePath);
+        private Read(String filePath,  Charset charset) {
+            super(filePath,  charset);
         }
 
+        /** Loads lines from disk on first call, returns the cached copy afterward. */
         private List<String> lines() throws IOException {
-            if (cachedLines == null) cachedLines = Files.readAllLines(getPath(), CHARSET);
+            if (cachedLines == null) cachedLines = Files.readAllLines(getPath(), charset);
             return cachedLines;
         }
 
         /**
-         * Returns all lines in the file.
-         *
-         * The returned list is immutable.
+         * Returns every line in the file as an immutable list.
+         * Does not affect the sequential read cursor.
          */
         public List<String> readAllLines() throws IOException {
             return List.copyOf(lines());
@@ -154,7 +191,7 @@ public class FileX {
          *
          * First line = 1.
          */
-        public int currentLineNumber() {
+        public int nextLineNumber() {
             return currentLine + 1;
         }
 
@@ -170,6 +207,7 @@ public class FileX {
          *
          * First line = 1.
          *
+         * @param n the line number to read (1-based)
          * @throws IndexOutOfBoundsException if the line does not exist
          */
         public String readLine(int n) throws IOException {
@@ -201,25 +239,26 @@ public class FileX {
        Append
        ======================= */
 
+    /**
+     * Adds lines to the end of a file without touching existing content.
+     * Creates the file if it doesn't already exist.
+     */
+
     public static class Append extends BaseFile {
 
-        public Append(String filePath) {
-            super(filePath);
+        private Append(String filePath,  Charset charset) {
+            super(filePath,  charset);
         }
 
-        /**
-         * Appends a single line.
-         */
+        /** Appends a single line to the end of the file. */
         public void append(String line) throws IOException {
             append(Collections.singletonList(line));
         }
 
-        /**
-         * Appends multiple lines.
-         */
+        /** Appends multiple lines to the end of the file, in order. */
         public void append(List<String> lines) throws IOException {
 
-            Files.write(getPath(), lines, CHARSET,
+            Files.write(getPath(), lines, charset,
                         StandardOpenOption.CREATE,
                         StandardOpenOption.WRITE,
                         StandardOpenOption.APPEND
@@ -231,25 +270,26 @@ public class FileX {
        Write
        ======================= */
 
+    /**
+     * Overwrites a file's entire contents. Creates the file if it doesn't
+     * already exist; replaces existing content if it does.
+     */
+
     public static class Write extends BaseFile {
 
-        public Write(String filePath) {
-            super(filePath);
+        private Write(String filePath,  Charset charset) {
+            super(filePath, charset);
         }
 
-        /**
-         * Overwrites the file with a single line.
-         */
+        /** Overwrites the file with a single line. */
         public void write(String line)throws IOException {
             write(Collections.singletonList(line));
         }
 
-        /**
-         * Overwrites the file with multiple lines.
-         */
+        /** Overwrites the file with multiple lines. */
         public void write(List<String> lines) throws IOException {
 
-            Files.write(getPath(), lines, CHARSET,
+            Files.write(getPath(), lines, charset,
                         StandardOpenOption.CREATE,
                         StandardOpenOption.WRITE,
                         StandardOpenOption.TRUNCATE_EXISTING
